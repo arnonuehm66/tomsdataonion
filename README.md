@@ -14,3 +14,5 @@ To use your `~/bin/` folder add this path to your `PATH` environment variable, u
 `[ -d "$HOME/bin" ] && PATH="$HOME/bin:$PATH"`
 
 to your `.bashrc` file.
+
+For Informtion about going through the layers of the data onion read the file `howto_info.txt`.
