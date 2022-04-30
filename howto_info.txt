@@ -1,0 +1,29 @@
+# Create a ~/bin folder, where all compied program resides.
+# Add the path to the PATH environment variable. 
+# After that, compile all programs.
+>$ makeAllCprogs.pl .
+
+# Start with ascii85 coded text from starting file.
+>$ ascii85 td00.txt > td01.txt
+
+# Bit fiddling.
+>$ ascii85 td01.txt | xor_rbr > td02.txt
+
+# Parity bits to bitestream.
+>$ ascii85 td02.txt | parityodd > td03.txt
+
+# Decode with a xor byte array and get the binary payload.
+>$ ascii85 td03.txt | xor_decrypt > td04.txt
+>$ ascii85 td04.txt > td04.bin
+
+# Convert all ip/udp packages and get the binary payload.
+>$ ip4udp td04.bin > td05.txt
+>$ ascii85 td05.txt > td05.bin
+
+# Decrypt aes cypher and get the binary payload.
+>$ aes_decrypt td05.bin > td06.txt
+>$ ascii85 td06.txt > td06.bin
+
+# Emulated that CPU and get solved text. Horray.
+>$ i69_emu td06.bin
+>$ i69_emu td06.bin > td0solved.txt

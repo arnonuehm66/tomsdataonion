@@ -1,6 +1,8 @@
 # tomsdataonion
 How to peel this puzzle. My approach.
 
-In each program folder `tdo0x/c-prog/` lies a `Makefile` file.
+Use the Perl program `makeAllCprogs.pl` to compile all C programs.
 
-`make debug` will create a debug version in its folder, `make` compile the stripped retail version and `make clean` will delete the program.
+Issue the command as
+`>$ perl makeAllCprogs.pl .`
+and all compiled C programs will be saved in your `~/bin/` folder.
