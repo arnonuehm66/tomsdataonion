@@ -13,6 +13,7 @@
  ** 16.07.2020  JE    Adjusted usage to reflect use in pipes is posssible.
  ** 20.10.2020  JE    Changed ftell() and fseek() to 64 bit type now use off_t.
  ** 20.10.2020  JE    Changed all size_t to off_t accordingly.
+ ** 12.08.2023  JE    Now uses 'c_dynamic_arrays_macros.h' and latest libs.
  *******************************************************************************/
 
 
@@ -25,13 +26,13 @@
 #include <string.h>
 
 #include "c_string.h"
-#include "c_dynamic_arrays.h"
+#include "c_dynamic_arrays_macros.h"
 
 
 //******************************************************************************
 //* me and myself
 
-#define ME_VERSION "0.3.2"
+#define ME_VERSION "0.3.3"
 cstr g_csMename;
 
 
@@ -77,13 +78,16 @@ typedef union s_i32c {
   uchar    aChars[4];
 } t_i32c;
 
+s_array(cstr);
+s_array(int);
+
 
 //******************************************************************************
 //* Global variables
 
 // Arguments
-t_options    g_tOpts;   // CLI options and arguments.
-t_array_cstr g_tArgs;   // Free arguments.
+t_options     g_tOpts;  // CLI options and arguments.
+t_array(cstr) g_tArgs;  // Free arguments.
 
 
 //******************************************************************************
@@ -169,7 +173,7 @@ void getOptions(int argc, char* argv[]) {
   g_tOpts.iReadStdin = 0;
 
   // Init free argument's dynamic array.
-  dacsInit(&g_tArgs);
+  daInit(cstr, g_tArgs);
 
   // Loop all arguments from command line POSIX style.
   while (iArg < argc) {
@@ -217,7 +221,7 @@ next_argument:
       goto next_argument;
     }
     // Else, it's just a filename.
-    dacsAdd(&g_tArgs, csArgv.cStr);
+    daAdd(cstr, g_tArgs, csNew(csArgv.cStr));
   }
 
   // Sanity check of arguments and flags.
@@ -239,7 +243,7 @@ next_argument:
  * Name:  readASCII852Array
  * Purpose: Reads all chars between '<~' & '~>' into array, skips whitespaces.
  *******************************************************************************/
-int readAscii852array(t_array_int* pdaiBytes, FILE* hFile) {
+int readAscii852array(t_array(int)* pdaiBytes, FILE* hFile) {
   int b = 0;
 
   // Read bytes until '<~' appears.
@@ -252,9 +256,9 @@ int readAscii852array(t_array_int* pdaiBytes, FILE* hFile) {
   // Save to array until '~' appears (i.e. "~>")
   while (fread(&b, sizeof(char), 1, hFile)) {
     if (b == C_EOB)              return 1;
-    if (b == C_NUL)              for (int i = 0; i < 5; ++i) daiAdd(pdaiBytes, C_MIN);
+    if (b == C_NUL)              for (int i = 0; i < 5; ++i) daAdd(int, (*pdaiBytes), C_MIN);
     if (b <  C_MIN || b > C_MAX) continue;
-    daiAdd(pdaiBytes, b);
+    daAdd(int, (*pdaiBytes), b);
   }
 
   return 0;
@@ -264,7 +268,7 @@ int readAscii852array(t_array_int* pdaiBytes, FILE* hFile) {
  * Name:  padArrayTo5
  * Purpose: Pads array with 'u' so its length is a multiple of 5.
  *******************************************************************************/
-int padArrayTo5(t_array_int* pdaiBytes) {
+int padArrayTo5(t_array(int)* pdaiBytes) {
   int iPad = 5 - (pdaiBytes->sCount) % 5;
 
   if (iPad == 5) return 0;
@@ -274,7 +278,7 @@ int padArrayTo5(t_array_int* pdaiBytes) {
   // Padding: 0 4 3 2 1 0 4 3 2 1 0
 
   for (int i = 0; i < iPad; ++i)
-    daiAdd(pdaiBytes, C_MAX);
+    daAdd(int, (*pdaiBytes), C_MAX);
 
   return iPad;
 }
@@ -283,12 +287,12 @@ int padArrayTo5(t_array_int* pdaiBytes) {
  * Name:  get4IntFrom5Block
  * Purpose: Converts 5 bytes into a 4 byte integer.
  *******************************************************************************/
-void get4IntFrom5Block(uint32_t* puInt32, t_array_int* pdaiBytes, off_t* poOff) {
+void get4IntFrom5Block(uint32_t* puInt32, t_array(int)* pdaiBytes, off_t* poOff) {
   int n[5] = {0};
 
   // Read 5 bytes from array.
   for (int i = 0; i < 5; ++i)
-    n[i] = pdaiBytes->pInt[*poOff + i];
+    n[i] = pdaiBytes->pVal[*poOff + i];
 
   // Calculation of 4 Bytes from five chars.
   *puInt32 = (n[0] - 33) * 85 * 85 * 85 * 85
@@ -318,13 +322,13 @@ void print4int(uint32_t u32Int, int iMax) {
  * Purpose: Converts an ascii84 data stream to a byte stream.
  *******************************************************************************/
 void ascii852bin(FILE* hFile) {
-  uint32_t    uInt32   = {0};
-  t_array_int daiBytes = {0};
-  off_t       oOff     = g_tOpts.oOffset;
-  int         iPad     = 0;
-  int         iN       = 4;
+  uint32_t     uInt32   = {0};
+  t_array(int) daiBytes = {0};
+  off_t        oOff     = g_tOpts.oOffset;
+  int          iPad     = 0;
+  int          iN       = 4;
 
-  daiInit(&daiBytes);
+  daInit(int, daiBytes);
 
   if (! readAscii852array(&daiBytes, hFile))
     dispatchError(ERR_FILE, "Error reading file");
@@ -341,7 +345,7 @@ void ascii852bin(FILE* hFile) {
   // Print an end of line, if wanted.
   if(g_tOpts.iPrtEol) printf("\n");
 
-  daiFree(&daiBytes);
+  daFree(daiBytes);
 }
 
 //*** decoder
@@ -355,12 +359,12 @@ void ascii852bin(FILE* hFile) {
  * Name:  readASCII852Array
  * Purpose: Reads a file into a dynamic array.
  *******************************************************************************/
-int readFile2array(t_array_int* pdaiBytes, FILE* hFile) {
+int readFile2array(t_array(int)* pdaiBytes, FILE* hFile) {
   int b = 0;
 
   // Read bytes until eof.
   while (fread(&b, sizeof(char), 1, hFile))
-    daiAdd(pdaiBytes, b);
+    daAdd(int, (*pdaiBytes), b);
 
   return 1;
 }
@@ -369,7 +373,7 @@ int readFile2array(t_array_int* pdaiBytes, FILE* hFile) {
  * Name:  padArrayTo4
  * Purpose: Pads array with 0 so its length is a multiple of 4.
  *******************************************************************************/
-int padArrayTo4(t_array_int* pdaiBytes) {
+int padArrayTo4(t_array(int)* pdaiBytes) {
   int iPad = 4 - (pdaiBytes->sCount) % 4;
 
   if (iPad == 4) return 0;
@@ -379,7 +383,7 @@ int padArrayTo4(t_array_int* pdaiBytes) {
   // Padding: 0 3 2 1 0 3 2 1 0
 
   for (int i = 0; i < iPad; ++i)
-    daiAdd(pdaiBytes, 0);
+    daAdd(int, (*pdaiBytes), 0);
 
   return iPad;
 }
@@ -388,12 +392,12 @@ int padArrayTo4(t_array_int* pdaiBytes) {
  * Name:  get5BlockFrom4Int
  * Purpose: Converts a 4 byte integer into 5 bytes.
  *******************************************************************************/
-void get5BlockFrom4Int(int* n, t_array_int* pdaiBytes, off_t* poOff) {
+void get5BlockFrom4Int(int* n, t_array(int)* pdaiBytes, off_t* poOff) {
   t_i32c ui32c = {0};
 
   // Read 4 bytes from array.
   for (int i = 0; i < 4; ++i)
-    ui32c.aChars[3 - i] = pdaiBytes->pInt[*poOff + i];
+    ui32c.aChars[3 - i] = pdaiBytes->pVal[*poOff + i];
 
   // Get the 5 chars out of the integer.
   n[0] = ((ui32c.u32Int / (85 * 85 * 85 * 85)) % 85) + 33;
@@ -419,15 +423,13 @@ void print5chars(int* b, int iMax) {
  * Purpose: .
  *******************************************************************************/
 void bin2ascii85(FILE* hFile) {
-//  printf("Not implemented yet\n"); return;
+  int          n[5]     = {0};
+  t_array(int) daiBytes = {0};
+  off_t        oOff     = g_tOpts.oOffset;
+  int          iPad     = 0;
+  int          iN       = 5;
 
-  int         n[5]     = {0};
-  t_array_int daiBytes = {0};
-  off_t       oOff     = g_tOpts.oOffset;
-  int         iPad     = 0;
-  int         iN       = 5;
-
-  daiInit(&daiBytes);
+  daInit(int, daiBytes);
 
   // Read the file into a byte array
   if (! readFile2array(&daiBytes, hFile))
@@ -448,7 +450,7 @@ void bin2ascii85(FILE* hFile) {
   // Print an end of line, if wanted.
   if(g_tOpts.iPrtEol) printf("\n");
 
-  daiFree(&daiBytes);
+  daFree(daiBytes);
 }
 
 //*** encoder
@@ -480,7 +482,7 @@ int main(int argc, char *argv[]) {
       iStdin = 0;
     }
     else {
-      hFile = openFile(g_tArgs.pStr[i].cStr, "rb");
+      hFile = openFile(g_tArgs.pVal[i].cStr, "rb");
       oSize = getFileSize(hFile);
       if (g_tOpts.oOffset > oSize)
         dispatchError(ERR_FILE, "Offset greater than file size");
@@ -494,7 +496,7 @@ int main(int argc, char *argv[]) {
   }
 
   // Free all used memory, prior end of program.
-  dacsFree(&g_tArgs);
+  daFreeEx(g_tArgs, cStr);
 
   return ERR_NOERR;
 }
