@@ -8,6 +8,7 @@
  ** 26.08.2020  JE    Created program.
  ** 07.09.2020  JE    Changed it with the standard program skeleton.
  ** 07.09.2020  JE    Now use stdfcns.c v0.8.1 with readBytes(), printBytes().
+ ** 13.08.2023  JE    Now uses 'c_dynamic_arrays_macros.h' and latest libs.
  *******************************************************************************/
 
 
@@ -22,13 +23,13 @@
 #include <openssl/evperr.h>
 
 #include "c_string.h"
-#include "c_dynamic_arrays.h"
+#include "c_dynamic_arrays_macros.h"
 
 
 //******************************************************************************
 //* me and myself
 
-#define ME_VERSION "0.2.2"
+#define ME_VERSION "0.2.3"
 cstr g_csMename;
 
 
@@ -61,13 +62,15 @@ typedef struct s_options {
   int iUseCtr;
 } t_options;
 
+s_array(cstr);
+
 
 //******************************************************************************
 //* Global variables
 
 // Arguments
-t_options    g_tOpts;   // CLI options and arguments.
-t_array_cstr g_tArgs;   // Free arguments.
+t_options     g_tOpts;  // CLI options and arguments.
+t_array(cstr) g_tArgs;  // Free arguments.
 
 
 //******************************************************************************
@@ -144,7 +147,7 @@ void getOptions(int argc, char* argv[]) {
   g_tOpts.iUseCtr = 0;
 
   // Init free argument's dynamic array.
-  dacsInit(&g_tArgs);
+  daInit(cstr, g_tArgs);
 
   // Loop all arguments from command line POSIX style.
   while (iArg < argc) {
@@ -183,7 +186,7 @@ next_argument:
       goto next_argument;
     }
     // Else, it's just a filename.
-    dacsAdd(&g_tArgs, csArgv.cStr);
+    daAdd(cstr, g_tArgs, csNew(csArgv.cStr));
   }
 
   // Sanity check of arguments and flags.
@@ -196,8 +199,9 @@ next_argument:
 }
 
 /*******************************************************************************
- * Name:  .
- * Purpose: .
+ * Name:  decryptEvpAes
+ * Purpose: Decrypts given data with given key and IV.
+ * ToDo:  Change openssl interface. This one is deprecated!
  *******************************************************************************/
 int decryptEvpAes(uint8_t* u8pCData, int iCLen, uint8_t* u8pKey, uint8_t* u8pIV, uint8_t* u8pPData) {
   EVP_CIPHER_CTX* ctx  = NULL;
@@ -239,8 +243,8 @@ int decryptEvpAes(uint8_t* u8pCData, int iCLen, uint8_t* u8pKey, uint8_t* u8pIV,
 }
 
 /*******************************************************************************
- * Name:  .
- * Purpose: .
+ * Name:  decryptKeyAndFile
+ * Purpose: Main function to retrieve all assets and decrypt the data.
  *******************************************************************************/
 void decryptKeyAndFile(FILE* hFile, li liFileSize) {
   uint8_t  ui8KEK[32]   = {0};
@@ -308,7 +312,7 @@ int main(int argc, char *argv[]) {
 
   // Get all data from all files.
   for (int i = 0; i < g_tArgs.sCount; ++i) {
-    hFile  = openFile(g_tArgs.pStr[i].cStr, "rb");
+    hFile  = openFile(g_tArgs.pVal[i].cStr, "rb");
     liSize = getFileSize(hFile);
 //-- file ----------------------------------------------------------------------
     decryptKeyAndFile(hFile, liSize);
@@ -317,7 +321,7 @@ int main(int argc, char *argv[]) {
   }
 
   // Free all used memory, prior end of program.
-  dacsFree(&g_tArgs);
+  daFreeEx(g_tArgs, cStr);
 
   return ERR_NOERR;
 }

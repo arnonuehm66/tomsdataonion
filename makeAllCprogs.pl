@@ -23,6 +23,10 @@
 #** 28.01.2021  JE    Changed '-p' to '-b'.
 #** 08.03.2021  JE    Added '--dellibs' for deleting default libraries.
 #** 07.04.2021  JE    Now all '-llib' are at the end of gcc, 'cause all debians.
+#** 12.04.2021  JE    Fixed bin-dir bug in getOPtions(), if no path is given.
+#** 18.07.2021  JE    Added '-c' for compilation with clang.
+#** 25.01.2023  JE    Changed dispatchError() logic to default.
+#** 13.01.2023  JE    Added '-r' for using regex lib explicitly.
 #*******************************************************************************
 
 
@@ -38,7 +42,7 @@ use File::Spec;
 #*******************************************************************************
 #* infos
 
-my $g_meversion = '0.10.1';
+my $g_meversion = '0.12.1';
 my $g_mename    = getMeName();
 my $g_mehome    = getMeHome();
 my $g_mebindir  = getMeBinDir(); # Needs $g_mehome
@@ -124,21 +128,23 @@ sub usage($;$) { my ($err, $txt) = @_;
   $txt = "$txt\n\n" if defined $txt;
 
   #Summary:************************ 80 chars width ****************************************
-  $msg .= "usage: $g_mename [-t] [-9] [-O n] [-b <path>] [--dellibs] [-l <lib1> [-l <lib2> ...]] [path1 path2 ...]\n";
+  $msg .= "usage: $g_mename [-t] [-c] [-9] [-O n] [-b <path>] [-r] [--dellibs] [-l <lib1> [-l <lib2> ...]] [path1 path2 ...]\n";
   $msg .= "       $g_mename [-h|--help|-v|--version]\n";
   $msg .= " Creates all C programms in path '~/bin/Cpp/' or path given at cli with the\n";
   $msg .= " 'gcc' compiler on your system and strips all symbols.\n";
-  $msg .= " 'path' given points to folder with at least one 'main.c[pp]' file.\n";
+  $msg .= " This 'path' points to folder with at least one 'main.c[pp]' file.\n";
   $msg .= " Try to use '-O s' first, which will optimize for speed. '-O 2' should also be\n";
   $msg .= " OK, but use '-O 3' with care, because it could break some code. '-O 0 will\n";
   $msg .= " just switch off optimization. See 'man gcc' for more indepth informations.\n";
   $msg .= "  -t:            don't execute printed commands (default execute)\n";
+  $msg .= "  -c:            compile with clang (default gcc)\n";
   $msg .= "  -9:            explicitly compile C99 standard, else with system preferences\n";
-  $msg .= "  -O n:          compile with gcc optimzations (n = 0, 1, 2, 3, fast or s)\n";
+  $msg .= "  -O n:          compile with optimzations (n = 0, 1, 2, 3, fast or s)\n";
   $msg .= "                 (default '-O fast' for speed)\n";
   $msg .= "  -b <path>:     path to compiled programs (default '~/bin/')\n";
+  $msg .= "  -r:            compile with regex support (default without -l pcre2-8)\n";
   $msg .= "  --dellibs:     delete default libs, use prior use of any other '-l'\n";
-  $msg .= "  -l <lib>:      add a lib for each '-l' (default -l pcre2-8 -l m -l crypto)\n";
+  $msg .= "  -l <lib>:      add a lib for each '-l' (default -l m -l crypto)\n";
   $msg .= "  -h|--help:     print this help\n";
   $msg .= "  -v|--version:  print version of program\n";
   #Summary:************************ 80 chars width ****************************************
@@ -186,10 +192,12 @@ sub getOptions(@) { my (@args) = @_;
 
   # Set defaults.
   $g_a{'testMode'} = 0;
+  $g_a{'cc'}       = 'gcc';
   $g_a{'c99'}      = '';
-  $g_a{'O'}        = ' -Ofast';
+  $g_a{'optimise'} = ' -Ofast';
   $g_a{'bindir'}   = $g_mebindir;
-  $g_a{'l'}        = ' -lpcre2-8 -lm -lcrypto';
+  $g_a{'regex'}    = '';
+  $g_a{'libs'}     = ' -lm -lcrypto';
   @g_args          = ();
 
   # Loop all arguments from command line POSIX style.
@@ -205,10 +213,10 @@ argument:
       version();
       }
       if ($arg eq '--dellibs') {
-        $g_a{'l'} = '';
+        $g_a{'libs'} = '';
         next;
       }
-      return (ERR_ARGS, 'Invalid long option');
+      dispatchError(ERR_ARGS, 'Invalid long option');
     }
 
     # Short options:
@@ -226,26 +234,34 @@ argument:
           $g_a{'testMode'} = 1;
           next;
         }
+        if ($opt eq 'c' ) {
+          $g_a{'cc'} = 'clang';
+          next;
+        }
         if ($opt eq '9' ) {
           $g_a{'c99'} = ' -std=c99';
           next;
         }
         if ($opt eq 'O' ) {
           $tmp      = shift(@args);
-          $g_a{'O'} = " -O$tmp";
+          $g_a{'optimise'} = " -O$tmp";
           next;
         }
         if ($opt eq 'b' ) {
           $g_a{'bindir'} = removeSlash(shift(@args));
           next;
         }
+        if ($opt eq 'r' ) {
+          $g_a{'regex'} = ' -lpcre2-8';
+          next;
+        }
         if ($opt eq 'l' ) {
           # -l mylib -> -lmykib
           $tmp       =  shift(@args);
-          $g_a{'l'} .=  " -l$tmp";
+          $g_a{'libs'} .=  " -l$tmp";
           next;
         }
-        return (ERR_ARGS, 'Invalid short option');
+        dispatchError(ERR_ARGS, 'Invalid short option');
       }
       next argument;
     }
@@ -255,15 +271,12 @@ argument:
   }
 
   # Sanity check of arguments and flags.
-  $g_args[0] = "$g_mebindir/Cpp/" if @g_args == 0;
+  $g_args[0] = "$g_a{'bindir'}/Cpp/" if @g_args == 0;
 
   # Get absolute path no matter if it was given.
   foreach my$file (@g_args) {
     $file = File::Spec->rel2abs($file);
   }
-
-  # All is set and done.
-  return ERR_NOERR;
 }
 
 #*******************************************************************************
@@ -298,7 +311,7 @@ sub compile() {
   # Check, if no name could be derived from path.
   return if $name eq '';
 
-  my $rv = cmd("gcc -Wall$g_a{'O'}$g_a{'c99'} -o $g_a{'bindir'}/$name $File::Find::name$g_a{'l'}");
+  my $rv = cmd("$g_a{'cc'} -Wall$g_a{'optimise'}$g_a{'c99'} -o $g_a{'bindir'}/$name $File::Find::name$g_a{'libs'}$g_a{'regex'}");
   print "$rv";
      $rv = cmd("strip $g_a{'bindir'}/$name");
   print "$rv";
@@ -309,8 +322,7 @@ sub compile() {
 #* main
 
 sub main() {
-  # Print apropriate error message, if necessary.
-  dispatchError(getOptions(@ARGV));
+  getOptions(@ARGV);
 
   find(\&compile, @g_args);
 
