@@ -7,8 +7,9 @@
  **-----------------------------------------------------------------------------
  ** 26.08.2020  JE    Created program.
  ** 07.09.2020  JE    Changed it with the standard program skeleton.
- ** 07.09.2020  JE    Now use stdfcns.c v0.8.1 with readBytes(), printBytes().
+ ** 07.09.2020  JE    Now uses stdfcns.c v0.8.1 with readBytes(), printBytes().
  ** 13.08.2023  JE    Now uses 'c_dynamic_arrays_macros.h' and latest libs.
+ ** 18.09.2023  JE    Now uses EVP functions to unwrap the key.
  *******************************************************************************/
 
 
@@ -29,7 +30,7 @@
 //******************************************************************************
 //* me and myself
 
-#define ME_VERSION "0.2.3"
+#define ME_VERSION "0.3.1"
 cstr g_csMename;
 
 
@@ -199,9 +200,42 @@ next_argument:
 }
 
 /*******************************************************************************
+ * Name:  unwrapAesKey
+ * Purpose: Decrypts AES key with given key and IV.
+ *******************************************************************************/
+int unwrapAesKey(uint8_t* ui8KEK, uint8_t* ui8KEK_IV, uint8_t* ui8EK, int ui8EK_LEN) {
+  EVP_CIPHER_CTX* ctx      = NULL;
+  int             len1     = 0;
+  int             len2     = 0;
+  uint8_t*        pui8Buff = (uint8_t*) malloc(ui8EK_LEN);
+
+  if(! (ctx = EVP_CIPHER_CTX_new()))
+    dispatchError(ERR_CRYPT, "EVP_CIPHER_CTX_new() failed");
+
+  if (EVP_DecryptInit_ex(ctx, EVP_aes_256_wrap(), NULL, ui8KEK, ui8KEK_IV) != 1)
+    dispatchError(ERR_CRYPT, "WRAP: EVP_DecryptInit_ex() failed");
+
+  if (EVP_DecryptUpdate(ctx, pui8Buff, &len1, ui8EK, ui8EK_LEN) != 1)
+    dispatchError(ERR_CRYPT, "EVP_DecryptUpdate() failed");
+
+  len2 = len1;
+
+  if (EVP_DecryptFinal_ex(ctx, pui8Buff + len1, &len1) != 1)
+    dispatchError(ERR_CRYPT, "EVP_DecryptFinal_ex() failed");
+
+  len2 += len1;
+
+  for (int i = 0; i < ui8EK_LEN; ++i) ui8EK[i] = pui8Buff[i];
+
+  EVP_CIPHER_CTX_free(ctx);
+  free(pui8Buff);
+
+  return len2;
+}
+
+/*******************************************************************************
  * Name:  decryptEvpAes
- * Purpose: Decrypts given data with given key and IV.
- * ToDo:  Change openssl interface. This one is deprecated!
+ * Purpose: Decrypts data with given key and IV.
  *******************************************************************************/
 int decryptEvpAes(uint8_t* u8pCData, int iCLen, uint8_t* u8pKey, uint8_t* u8pIV, uint8_t* u8pPData) {
   EVP_CIPHER_CTX* ctx  = NULL;
@@ -242,6 +276,17 @@ int decryptEvpAes(uint8_t* u8pCData, int iCLen, uint8_t* u8pKey, uint8_t* u8pIV,
   return len2;
 }
 
+// /*******************************************************************************
+//  * Name:  printHexBytes
+//  * Purpose: Prints bytes to stdout.
+//  *******************************************************************************/
+// void printHexBytes(uchar* pucBytes, size_t sLength) {
+//   printf("0x ");
+//   for (size_t i = 0; i < sLength; ++i)
+//     printf("%02x ", pucBytes[i]);
+//   printf("\n");
+// }
+
 /*******************************************************************************
  * Name:  decryptKeyAndFile
  * Purpose: Main function to retrieve all assets and decrypt the data.
@@ -249,7 +294,6 @@ int decryptEvpAes(uint8_t* u8pCData, int iCLen, uint8_t* u8pKey, uint8_t* u8pIV,
 void decryptKeyAndFile(FILE* hFile, li liFileSize) {
   uint8_t  ui8KEK[32]   = {0};
   uint8_t  ui8KEK_IV[8] = {0};
-  AES_KEY  aesKEK       = {0};
   uint8_t  ui8EK[40]    = {0};
   uint8_t  ui8EK_IV[16] = {0};
   uint8_t* pui8Data     = NULL;
@@ -280,12 +324,8 @@ void decryptKeyAndFile(FILE* hFile, li liFileSize) {
   if (! readBytes(pui8Data, ui16DataLen, hFile))
     dispatchError(ERR_FILE, "Couldn't read data");
 
-  // Decrypt data's AES key.
-  AES_set_decrypt_key(ui8KEK, 256, &aesKEK);
-  AES_unwrap_key(&aesKEK, ui8KEK_IV, pui8Buff, ui8EK, 40);
-
-  // Buffer swap to payload encryption key.
-  for (int i =0; i < 40; ++i) ui8EK[i] = pui8Buff[i];
+  unwrapAesKey(ui8KEK, ui8KEK_IV, ui8EK, 40);
+  // printHexBytes(ui8EK, 40); exit(0);
 
   // Decrypt the payload.
   decryptEvpAes(pui8Data, ui16DataLen, ui8EK, ui8EK_IV, pui8Buff);

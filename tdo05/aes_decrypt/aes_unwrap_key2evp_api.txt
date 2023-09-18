@@ -1,0 +1,67 @@
+#include <openssl/evp.h>
+
+// Function to unwrap an AES key using EVP functions
+int unwrap_aes_key(const unsigned char *wrapped_key, int wrapped_key_len,
+                   const unsigned char *enc_key, const unsigned char *iv,
+                   unsigned char *unwrapped_key) {
+    EVP_CIPHER_CTX *ctx;
+    int outlen, len;
+    int ret = 0;
+
+    // Create and initialize the cipher context
+    ctx = EVP_CIPHER_CTX_new();
+    if (!ctx) {
+        // Handle error
+        return -1;
+    }
+
+    // Initialize the cipher context for decryption
+    if (EVP_OpenInit(ctx, EVP_aes_256_cbc(), enc_key, enc_key_len, iv) != 1) {
+        // Handle error
+        EVP_CIPHER_CTX_free(ctx);
+        return -1;
+    }
+
+    // Unwrap the AES key
+    if (EVP_OpenUpdate(ctx, unwrapped_key, &outlen, wrapped_key, wrapped_key_len) != 1) {
+        // Handle error
+        EVP_CIPHER_CTX_free(ctx);
+        return -1;
+    }
+
+    // Finalize the unwrapping process
+    if (EVP_OpenFinal(ctx, unwrapped_key + outlen, &len) != 1) {
+        // Handle error
+        EVP_CIPHER_CTX_free(ctx);
+        return -1;
+    }
+
+    // Clean up the cipher context
+    EVP_CIPHER_CTX_free(ctx);
+
+    return outlen + len;
+}
+
+#include <openssl/evp.h>
+
+// Function to unwrap an AES key using EVP API
+int unwrap_aes_key(const unsigned char *wrapped_key, int wrapped_key_len, const unsigned char *key, const unsigned char *iv, unsigned char *unwrapped_key) {
+    EVP_CIPHER_CTX *ctx;
+    int len;
+    int unwrapped_key_len;
+
+    // Create and initialize the cipher context
+    ctx = EVP_CIPHER_CTX_new();
+    EVP_DecryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, key, iv);
+
+    // Unwrap the key
+    EVP_DecryptUpdate(ctx, unwrapped_key, &len, wrapped_key, wrapped_key_len);
+    unwrapped_key_len = len;
+    EVP_DecryptFinal_ex(ctx, unwrapped_key + len, &len);
+    unwrapped_key_len += len;
+
+    // Clean up the cipher context
+    EVP_CIPHER_CTX_free(ctx);
+
+    return unwrapped_key_len;
+}
