@@ -276,17 +276,6 @@ int decryptEvpAes(uint8_t* u8pCData, int iCLen, uint8_t* u8pKey, uint8_t* u8pIV,
   return len2;
 }
 
-// /*******************************************************************************
-//  * Name:  printHexBytes
-//  * Purpose: Prints bytes to stdout.
-//  *******************************************************************************/
-// void printHexBytes(uchar* pucBytes, size_t sLength) {
-//   printf("0x ");
-//   for (size_t i = 0; i < sLength; ++i)
-//     printf("%02x ", pucBytes[i]);
-//   printf("\n");
-// }
-
 /*******************************************************************************
  * Name:  decryptKeyAndFile
  * Purpose: Main function to retrieve all assets and decrypt the data.
@@ -325,7 +314,6 @@ void decryptKeyAndFile(FILE* hFile, li liFileSize) {
     dispatchError(ERR_FILE, "Couldn't read data");
 
   unwrapAesKey(ui8KEK, ui8KEK_IV, ui8EK, 40);
-  // printHexBytes(ui8EK, 40); exit(0);
 
   // Decrypt the payload.
   decryptEvpAes(pui8Data, ui16DataLen, ui8EK, ui8EK_IV, pui8Buff);
