@@ -19,7 +19,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include <openssl/aes.h>
 #include <openssl/evp.h>
 #include <openssl/evperr.h>
 
