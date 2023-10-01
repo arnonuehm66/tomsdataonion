@@ -2,24 +2,36 @@
  ** Name: stdfcns.c
  ** Purpose:  Keeps standard functions in one place for better maintenance.
  ** Author: (JE) Jens Elstner
- ** Version: v0.8.5
+ ** Version: v0.10.8
  *******************************************************************************
  ** Date        User  Log
  **-----------------------------------------------------------------------------
  ** 30.11.2019  JE    Created file.
- ** 17.01.2020  JE    Added necessary includes to run with nodiff.
- ** 10.03.2020  JE    Added 'stdint.h' to use C99 compatible uint32_t type.
- ** 11.03.2020  JE    Added invInt(), isDigit() and checkDateTime();
- ** 12.04.2020  JE    Added getArg*() function family.
+ ** 17.01.2020  JE    Added necessary includes to run with 'nodiff'.
+ ** 10.03.2020  JE    Added 'stdint.h' to use C99 compatible 'uint32_t' type.
+ ** 11.03.2020  JE    Added 'invInt()', 'isDigit()' and 'checkDateTime()'.
+ ** 12.04.2020  JE    Added 'getArg*()' function family.
  ** 12.04.2020  JE    Deleted boolean constants.
- ** 15.04.2020  JE    Changed getHexIntParm to getHexLongParm().
+ ** 15.04.2020  JE    Changed 'getHexIntParm()' to 'getHexLongParm()'.
  ** 13.07.2020  JE    Changed 'ARG_VALUE' to 'ARG_VAL'.
- ** 05.08.2020  JE    Added getMename().
- ** 07.09.2020  JE    Added readBytes(), printBytes().
- ** 10.09.2020  JE    Added printHex2err() for debugging.
- ** 08.10.2020  JE    Changed getFileSize() to use stat.
- ** 20.10.2020  JE    Changed size_t to off_t in getFileSize().
- ** 29.10.2020  JE    Changed definition of ll from long long to int64_t.
+ ** 05.08.2020  JE    Added 'getMename()'.
+ ** 07.09.2020  JE    Added 'readBytes()', 'printBytes()'.
+ ** 10.09.2020  JE    Added 'printHex2err()' for debugging.
+ ** 08.10.2020  JE    Changed 'getFileSize()' to use stat.
+ ** 12.03.2021  JE    Added a few 'printf()' defines for debugging.
+ ** 20.10.2020  JE    Changed 'size_t' to 'off_t' in 'getFileSize()'.
+ ** 05.04.2021  JE    Added '#include "c_string.h"' for IDE convienience.
+ ** 05.04.2021  JE    Now uses 'csInStrRev()' from 'c_string.h' v0.18.3.
+ ** 25.03.2021  JE    Added '#define prtVarUInt(var)'.
+ ** 19.04.2021  JE    Changed 'prtHey()' to 'prtLn(str)'.
+ ** 28.10.2021  JE    Added 'getArgHexInt()' and 'getArgInt()'.
+ ** 03.11.2021  JE    Now 'getArg*Int()' uses 'getArg*Long()'.
+ ** 03.11.2021  JE    Changed if- to switch-statement in 'getHexLongParm()'.
+ ** 11.11.2021  JE    Improved 'prtHl()' and 'prtVar*()' '#defines'.
+ ** 11.11.2021  JE    Got rid of memory leak in 'getMename()'.
+ ** 01.07.2022  JE    Shortened switch with 'toupper()' in 'getHexLongParm()'.
+ ** 25.07.2022  JE    Added '#define arraySize(arr)' to get elements count.
+ ** 23.07.2023  JE    Now uses c_string.h  v0.21.5
  *******************************************************************************/
 
 
@@ -31,6 +43,10 @@
 #include <endian.h>       // To get __LITTLE_ENDIAN.
 #include <stdint.h>       // For uint8_t, etc. typedefs.
 #include <sys/stat.h>     // for fstat to get file size.
+#include <ctype.h>        // for toupper().
+
+// For IDE convenience.
+#include "c_string.h"
 
 
 //******************************************************************************
@@ -50,6 +66,14 @@
 #define ARG_VAL 0x00
 #define ARG_CLI 0x01
 
+// Convenience macros
+#define arraySize(arr) (sizeof(arr) / sizeof(arr[0]))
+
+// Debug prints
+#define prtVar(f,v) printf("%s = " f "\n", #v, v)
+#define prtHl(c,n)  {for(int hjklm = 0; hjklm < n; ++hjklm) printf(c); printf("\n");}
+#define prtLn(str)  printf("str\n")
+
 
 //******************************************************************************
 //* type definition
@@ -58,8 +82,8 @@
 typedef unsigned int  uint;
 typedef unsigned char uchar;
 typedef long double   ldbl;
+typedef long long     ll;
 typedef long int      li;
-typedef int64_t       ll;
 
 // toInt() bytes to int converter.
 typedef union u_char2Int{
@@ -85,25 +109,21 @@ void version(void) {
  * Purpose: Get the name with which the programm was started.
  *******************************************************************************/
 void getMename(cstr* pcsMename, const char* argv0) {
-  ll   llPos     =  0;
-  ll   llLastPos = -1;
-  cstr csRest    = csNew("");
-  cstr csName    = csNew("");
+  ll   llPos  = 0;
+  cstr csRest = csNew("");
 
-  // Get last '/' if any.
-  while ((llPos = csInStr(llPos, argv0, "/")) > -1) {
-    llLastPos = llPos;
-    ++llPos;
-  }
+  // Get the very last '/' if any.
+  llPos = csInStrRev(CS_INSTR_START, argv0, "/");
 
   // Split at that '/' or get full string.
-  if (llLastPos > -1) {
-    csSplitPos(llLastPos, &csRest, &csName, argv0, 1);
-    csSet(pcsMename, csName.cStr);
+  if (llPos != CS_INSTR_NOT_FOUND) {
+    csSplitPos(llPos, &csRest, pcsMename, argv0, 1);
   }
   else {
     csSet(pcsMename, argv0);
   }
+
+  csFree(&csRest);
 }
 
 /*******************************************************************************
@@ -183,12 +203,12 @@ ll getHexLongParm(cstr csParm, int* piErr) {
   if (!strcmp(csPre.cStr, "0x")) fHex = 1;
 
   // Calc possible multiplier from integer postfix.
-  if (csPost.cStr[0] == 'k') iPost = 1024;
-  if (csPost.cStr[0] == 'K') iPost = 1024;
-  if (csPost.cStr[0] == 'm') iPost = 1024 * 1024;
-  if (csPost.cStr[0] == 'M') iPost = 1024 * 1024;
-  if (csPost.cStr[0] == 'g') iPost = 1024 * 1024 * 1024;
-  if (csPost.cStr[0] == 'G') iPost = 1024 * 1024 * 1024;
+  // Switch without break to fall throught the right number of multiplications.
+  switch (toupper(csPost.cStr[0])) {
+    case 'G': iPost *= 1024;
+    case 'M': iPost *= 1024;
+    case 'K': iPost *= 1024;
+  }
 
   // Hex or integer
   if (fHex == 1)
@@ -225,7 +245,7 @@ int getArgStr(cstr* pcsRv, int* piArg, int argc, char** argv, int bShift, const 
 
 /*******************************************************************************
  * Name:  getArgHexLong
- * Purpose: Reads an hex integer from cli or a value and returns it.
+ * Purpose: Reads an hex long integer from cli or a value and returns it.
  *******************************************************************************/
 int getArgHexLong(ll* pllRv, int* piArg, int argc, char** argv, int bShift, const char* pcVal) {
   cstr csRv = csNew("");
@@ -244,8 +264,21 @@ int getArgHexLong(ll* pllRv, int* piArg, int argc, char** argv, int bShift, cons
 }
 
 /*******************************************************************************
+ * Name:  getArgHexInt
+ * Purpose: Reads an hex integer from cli or a value and returns it.
+ *******************************************************************************/
+int getArgHexInt(int* piRv, int* piArg, int argc, char** argv, int bShift, const char* pcVal) {
+  ll  llRv = 0;
+  int iRet = 0;
+
+  iRet = getArgHexLong(&llRv, piArg, argc, argv, bShift, pcVal);
+  *piRv = (int) llRv;
+  return iRet;
+}
+
+/*******************************************************************************
  * Name:  getArgLong
- * Purpose: Reads an integer from cli or a value and returns it.
+ * Purpose: Reads an long integer from cli or a value and returns it.
  *******************************************************************************/
 int getArgLong(ll* pllRv, int* piArg, int argc, char** argv, int bShift, const char* pcVal) {
   cstr csRv  = csNew("");
@@ -261,6 +294,19 @@ int getArgLong(ll* pllRv, int* piArg, int argc, char** argv, int bShift, const c
 
   csFree(&csRv);
   return 1;
+}
+
+/*******************************************************************************
+ * Name:  getArgInt
+ * Purpose: Reads an integer from cli or a value and returns it.
+ *******************************************************************************/
+int getArgInt(int* piRv, int* piArg, int argc, char** argv, int bShift, const char* pcVal) {
+  ll  llRv = 0;
+  int iRet = 0;
+
+  iRet = getArgLong(&llRv, piArg, argc, argv, bShift, pcVal);
+  *piRv = (int) llRv;
+  return iRet;
 }
 
 /*******************************************************************************
@@ -308,7 +354,7 @@ FILE* openFile(const char* pcName, const char* pcFlags) {
  * Name:  getFileSize
  * Purpose: Returns size of file in bytes.
  *******************************************************************************/
-off_t getFileSize(FILE* hFile) {
+size_t getFileSize(FILE* hFile) {
   struct stat sStat = {0};
   fstat(hFile->_fileno, &sStat);
   return sStat.st_size;
